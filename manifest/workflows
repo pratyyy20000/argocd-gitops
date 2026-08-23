@@ -1,1 +1,162 @@
+GitOps-Based Kubernetes Deployment
+with Argo CD
+Project Documentation & Interview Reference Guide
+DevOps Portfolio Project  |  CI/CD & GitOps Automation
+
+1. Project Overview
+This project demonstrates a complete GitOps workflow for deploying and managing applications on Kubernetes using Argo CD. The Git repository acts as the single source of truth for the desired state of the cluster, and Argo CD continuously reconciles the live cluster state against that source, enabling automated, auditable, and self-healing deployments.
+Objectives
+•	Implement automated synchronization between Git and Kubernetes
+•	Demonstrate configuration drift detection and self-healing
+•	Perform Git-based rollback for failed or unwanted changes
+•	Establish a clean separation between Continuous Integration (Jenkins) and Continuous Deployment (Argo CD)
+2. Architecture
+The end-to-end pipeline follows this flow:
+Developer  →  GitHub  →  Jenkins (CI)  →  Amazon ECR  →  GitOps Repo  →  Argo CD  →  Kubernetes
+Jenkins is responsible for the CI stage — building, testing, scanning, and pushing container images to Amazon ECR. Once a new image is ready, the GitOps repository is updated with the new image tag, and Argo CD takes over the CD stage, syncing the declared state from Git into the Kubernetes cluster.
+3. Technologies Used
+Technology	Role in the Project
+GitHub / Git	Version control and single source of truth for manifests
+Argo CD	GitOps continuous delivery controller for Kubernetes
+Kubernetes	Container orchestration platform
+Minikube	Local single-node Kubernetes cluster for development/testing
+kubectl	Kubernetes command-line interface
+Docker	Containerization of the application
+Jenkins	Continuous Integration — build, test, scan
+Amazon ECR	Container image registry
+YAML	Declarative configuration format for manifests
+
+4. Workflow — Step by Step
+4.1 Prerequisites
+Install Git, Docker, kubectl, Minikube, and the Argo CD CLI, then verify each installation:
+git --version
+docker --version
+kubectl version --client
+minikube version
+argocd version --client
+4.2 Start the Kubernetes Cluster
+minikube start
+kubectl get nodes
+Expected result: the node should be in a Ready state.
+4.3 Create Kubernetes Manifests
+Deployment — manifests/deployment.yaml:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-demo
+  template:
+    metadata:
+      labels:
+        app: nginx-demo
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.25
+          ports:
+            - containerPort: 80
+Service — manifests/service.yaml:
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+spec:
+  selector:
+    app: nginx-demo
+  ports:
+    - port: 80
+      targetPort: 80
+  type: NodePort
+Commit and push the manifests to the repository:
+git add manifests/
+git commit -m "Add Kubernetes manifests"
+git push origin main
+4.4 Install Argo CD
+kubectl create namespace argocd
+kubectl apply -n argocd \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl get pods -n argocd
+Expected result: all Argo CD pods should be in a Running state.
+4.5 Access the Argo CD UI
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+Then open https://localhost:8080 in a browser.
+4.6 Connect the Git Repository
+Create a new Argo CD Application with the following settings:
+•	Application Name: nginx-demo
+•	Repo URL: https://github.com/<username>/argocd-gitops-demo
+•	Path: /manifests
+•	Destination: https://kubernetes.default.svc
+•	Namespace: default
+4.7 Configure Automated Sync
+Enable the following Argo CD sync policies:
+•	Automated Sync — automatically applies changes pushed to Git
+•	Self Heal — automatically corrects manual/out-of-band drift
+•	Prune — removes resources no longer defined in Git
+4.8 Validate the Deployment
+kubectl get deployments
+kubectl get pods
+kubectl get services
+Expected result: the Deployment, Pods, and Service should all be created successfully.
+4.9 Test GitOps Sync
+Change the replica count in deployment.yaml:
+replicas: 3
+Commit and push the change:
+git commit -am "Scale nginx to 3 replicas"
+git push origin main
+Argo CD detects the change and syncs automatically. Verify with:
+kubectl get pods
+4.10 Test Drift Detection
+Manually scale the deployment outside of Git:
+kubectl scale deployment nginx-demo --replicas=1
+Argo CD detects this as OutOfSync relative to the desired state in Git. With Self Heal enabled, it automatically restores the deployment back to the declared 3 replicas.
+4.11 Git-Based Rollback
+If a new image or change causes a failure, revert the commit in Git:
+git revert <commit-id>
+git push origin main
+Argo CD automatically rolls the cluster back to the previous, known-good state.
+5. Argo CD Components
+Component	Responsibility
+API Server	Exposes the CLI and UI, and serves as the gRPC/REST interface for all client operations
+Repo Server	Maintains a local cache of the Git repository and generates Kubernetes manifests from it
+Application Controller	Continuously compares live cluster state with the desired Git state and reconciles differences
+Redis	Provides caching to improve performance of repeated operations
+6. Key GitOps Concepts
+•	Single Source of Truth — Git holds the desired state of the system
+•	Declarative Configuration — infrastructure and application state described in YAML
+•	Continuous Reconciliation — the live state is constantly compared to the Git state
+•	Automated Sync — changes in Git are automatically applied to the cluster
+•	Drift Detection & Self-Healing — manual/out-of-band changes are detected and corrected
+•	Rollback & Auditability — every change is a Git commit, making history and rollback simple
+7. Jenkins + Argo CD Integration
+The project keeps a clean separation of concerns between Continuous Integration and Continuous Deployment:
+•	Jenkins (CI): builds the application, runs tests, performs security scans, and pushes the container image to Amazon ECR
+•	Jenkins then updates the GitOps repository with the new image tag
+•	Argo CD (CD): detects the change in the GitOps repository and syncs it to the Kubernetes cluster
+This separation means developers and CI tooling never interact with the cluster directly — all deployments happen exclusively through Git, improving security, traceability, and consistency.
+8. Validation Checklist
+☐  Minikube cluster created
+☐  Argo CD installed in the argocd namespace
+☐  GitHub repository connected to Argo CD
+☐  Kubernetes manifests committed to Git
+☐  Initial deployment successful
+☐  Automated sync tested
+☐  Drift detection verified
+☐  Self-healing tested
+☐  Git-based rollback tested
+☐  Jenkins integration understood and documented
+9. Key Learnings
+Through this project, hands-on experience was gained with core GitOps principles, Argo CD administration, declarative Kubernetes deployments, automated synchronization, drift detection and self-healing, Git-based rollback strategies, and maintaining a clean separation between CI and CD pipelines.
+10. Interview Talking Points
+Suggested points to highlight when presenting this project to an interviewer:
+1.	Explain "why GitOps" — Git as the single source of truth, full auditability via commit history, and easy rollback compared to imperative kubectl deployments.
+2.	Walk through the architecture diagram: Developer → GitHub → Jenkins (CI) → ECR → GitOps repo → Argo CD → Kubernetes.
+3.	Describe the CI/CD separation — Jenkins never touches the cluster directly, only Argo CD does, which reduces the attack surface and enforces Git as the gatekeeper.
+4.	Demonstrate understanding of reconciliation loops — Automated Sync, Self-Heal, and Prune — and what each one solves operationally.
+5.	Give a concrete example of drift detection and self-healing (manual scale-down being auto-corrected back to the Git-declared replica count).
+6.	Explain rollback as a simple git revert rather than a manual kubectl rollout undo, and why that's more auditable.
+7.	Mention the Argo CD components (API Server, Repo Server, Application Controller, Redis) to show depth beyond just using the UI.
 
